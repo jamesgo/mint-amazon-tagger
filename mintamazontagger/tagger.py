@@ -110,11 +110,18 @@ def create_updates(
                 start_date,
                 min([o.order_date for o in refunds]))
 
-        # Double the length of transaction history to help aid in
-        # personalized category tagging overrides.
+        # Get the date of the newest Amazon order.
+        end_date = max([o.order_date for o in orders])
+        if refunds:
+            end_date = max(
+                end_date,
+                max([o.order_date for o in refunds]))
+
         # TODO: Revise this logic/date range.
+        days_offset = 365
         today = datetime.date.today()
-        start_date = today - (today - start_date) * 2
+        start_date = start_date - datetime.timedelta(days = days_offset)
+        end_date = min(datetime.date.today(), end_date + datetime.timedelta(days = days_offset))
 
         login_progress = indeterminate_progress_factory(
             'Logging in to mint.com')
@@ -133,7 +140,7 @@ def create_updates(
 
         trans_progress = indeterminate_progress_factory(
             'Getting Mint Transactions')
-        mint_transactions_json = mint_client.get_transactions(start_date)
+        mint_transactions_json = mint_client.get_transactions(start_date, end_date)
         trans_progress.finish()
 
         parse_progress = determinate_progress_factory(
@@ -253,6 +260,11 @@ def get_mint_updates(
         # Always consider the original description from the financial
         # institution. Conditionally consider the current/user description or
         # the Mint inferred description.
+
+        # Manually added transactions don't have `fi_data.description`, so return user description
+        if not hasattr(t.fi_data, 'description'):
+            return (t.description.lower(), )
+
         result = (t.fi_data.description.lower(), )
         if args.mint_input_include_user_description:
             result = result + (t.description.lower(), )
